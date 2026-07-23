@@ -37,89 +37,72 @@ Host Mac (Apple Silicon)
 
 All base images use `admin`/`admin` credentials.
 
-## Directory Structure (intended)
+## Directory Structure
 
 ```
 .
-├── host/           # Host machine provisioning (Ansible / shell)
-├── images/         # Custom VM image definitions (Packer templates)
-├── runner/         # Runner registration, JIT token fetching, lifecycle scripts
-├── scripts/        # Helper scripts (clone, run, delete, health-check)
-└── workflows/      # Example GitHub Actions workflow files for testing
+├── host/                         # Host machine provisioning
+│   ├── setup.sh                  # Install prerequisites + pull base image
+│   └── com.myrunner.pool.plist   # launchd service definition
+├── runner/
+│   ├── jit-config.sh             # Fetch single-use JIT config from GitHub API
+│   └── bootstrap.sh              # Runs inside VM: installs runner, executes job, shuts down
+├── scripts/
+│   ├── spawn.sh                  # Spawn one ephemeral runner VM (blocking)
+│   └── pool.sh                   # Keep POOL_SIZE runners alive at all times
+├── images/                       # Custom VM image definitions (Packer templates) — future
+├── .env.example                  # Configuration template
+├── .env                          # Local config (gitignored)
+└── Makefile                      # Entry points: setup / spawn / pool / clean
 ```
 
 ## Key Commands
 
-### Tart CLI
+```bash
+# First-time setup
+make setup
+
+# Spawn a single runner (blocks until job completes)
+make spawn
+
+# Start the pool manager in the foreground
+make pool
+
+# Delete orphaned runner VMs
+make clean
+
+# Install/uninstall as a launchd background service
+make plist-install
+make plist-uninstall
+```
+
+### Tart CLI Reference
 
 ```bash
-# Install tart
-brew install openai/tools/tart
-
-# Pull a base image
-tart clone ghcr.io/cirruslabs/macos-tahoe-xcode:latest <vm-name>
-
-# Configure VM resources
+tart clone ghcr.io/cirruslabs/macos-sequoia-xcode:latest <vm-name>
 tart set <vm-name> --cpu 4 --memory 8192
-
-# Run VM (headless)
 tart run <vm-name> --no-graphics &
-
-# Get VM IP (poll until ready)
 tart ip <vm-name> --wait 60
-
-# SSH into VM
-ssh -o StrictHostKeyChecking=no admin@$(tart ip <vm-name>)
-
-# Run a script inside VM
-sshpass -p admin ssh -o StrictHostKeyChecking=no admin@$(tart ip <vm-name>) < script.sh
-
-# List local VMs
 tart list
-
-# Delete VM
 tart delete <vm-name>
-
-# Push custom image to registry
 tart push <vm-name> ghcr.io/<org>/<image>:<tag>
-```
-
-### GitHub Actions Runner (inside VM)
-
-```bash
-# Register ephemeral runner with JIT token
-./config.sh --url https://github.com/<org> \
-  --token <JIT_TOKEN> \
-  --name <runner-name> \
-  --labels macos,tart,xcode \
-  --ephemeral \
-  --unattended
-
-# Start runner
-./run.sh
-```
-
-### OCI Registry Auth
-
-```bash
-# Login to GHCR
 echo $GITHUB_TOKEN | tart login ghcr.io --username <user> --password-stdin
 ```
 
-## GitHub JIT Token
+## GitHub JIT Config
 
-Fetch a Just-In-Time runner registration token (single-use, for `--ephemeral`):
+`runner/jit-config.sh` wraps this API call (supports both org-level and repo-level):
 
 ```bash
-# Org-level
 curl -X POST \
   -H "Authorization: Bearer $GITHUB_TOKEN" \
   -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
   https://api.github.com/orgs/<org>/actions/runners/generate-jit-config \
-  -d '{"name":"<runner>","runner_group_id":1,"labels":["macos","tart"],"work_folder":"_work"}'
+  -d '{"name":"<runner>","runner_group_id":1,"labels":["macos","tart","xcode"],"work_folder":"_work"}'
 ```
 
-The response contains `encoded_jit_config` — pass it to `./run.sh` instead of using `config.sh`.
+The `encoded_jit_config` from the response is passed to `./run.sh --jitconfig <value>` inside the VM. The runner auto-deregisters after executing one job.
 
 ## IaC Conventions
 
