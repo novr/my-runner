@@ -1,36 +1,39 @@
 #!/usr/bin/env bash
-# Generates a GitHub App installation access token (valid ~1 hour).
-# Outputs the token to stdout.
+# Returns a GitHub API token to stdout.
 #
-# Required env vars:
-#   GITHUB_APP_ID               — App ID (numeric, shown on app settings page)
-#   GITHUB_APP_INSTALLATION_ID  — Installation ID (see: gh api /orgs/{org}/installation)
-#   GITHUB_APP_PRIVATE_KEY_PATH — Path to the .pem private key file
+# Priority:
+#   1. GitHub Apps  — if GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY_PATH are set
+#      Generates a JWT, exchanges it for an Installation Access Token (~1 hour).
+#   2. PAT          — if GITHUB_TOKEN is set
+#      Returns it directly.
 set -euo pipefail
 
-: "${GITHUB_APP_ID:?}"
-: "${GITHUB_APP_INSTALLATION_ID:?}"
-: "${GITHUB_APP_PRIVATE_KEY_PATH:?}"
+if [[ -n "${GITHUB_APP_ID:-}" && -n "${GITHUB_APP_PRIVATE_KEY_PATH:-}" ]]; then
+  : "${GITHUB_APP_INSTALLATION_ID:?GITHUB_APP_INSTALLATION_ID must be set when using GitHub Apps}"
 
-b64url() {
-  printf '%s' "$1" | base64 | tr '+/' '-_' | tr -d '='
-}
+  b64url() { printf '%s' "$1" | base64 | tr '+/' '-_' | tr -d '='; }
 
-now=$(date +%s)
-header=$(b64url '{"alg":"RS256","typ":"JWT"}')
-payload=$(b64url "{\"iat\":$((now - 60)),\"exp\":$((now + 600)),\"iss\":\"${GITHUB_APP_ID}\"}")
-signing_input="${header}.${payload}"
+  now=$(date +%s)
+  header=$(b64url '{"alg":"RS256","typ":"JWT"}')
+  payload=$(b64url "{\"iat\":$((now - 60)),\"exp\":$((now + 600)),\"iss\":\"${GITHUB_APP_ID}\"}")
+  signing_input="${header}.${payload}"
+  signature=$(printf '%s' "${signing_input}" \
+    | openssl dgst -sha256 -sign "${GITHUB_APP_PRIVATE_KEY_PATH}" \
+    | base64 | tr '+/' '-_' | tr -d '=')
+  jwt="${signing_input}.${signature}"
 
-signature=$(printf '%s' "${signing_input}" \
-  | openssl dgst -sha256 -sign "${GITHUB_APP_PRIVATE_KEY_PATH}" \
-  | base64 | tr '+/' '-_' | tr -d '=')
+  curl -fsSL \
+    -X POST \
+    -H "Authorization: Bearer ${jwt}" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "https://api.github.com/app/installations/${GITHUB_APP_INSTALLATION_ID}/access_tokens" \
+    | jq -r '.token'
 
-jwt="${signing_input}.${signature}"
+elif [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  printf '%s' "${GITHUB_TOKEN}"
 
-curl -fsSL \
-  -X POST \
-  -H "Authorization: Bearer ${jwt}" \
-  -H "Accept: application/vnd.github+json" \
-  -H "X-GitHub-Api-Version: 2022-11-28" \
-  "https://api.github.com/app/installations/${GITHUB_APP_INSTALLATION_ID}/access_tokens" \
-  | jq -r '.token'
+else
+  echo "ERROR: set either (GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY_PATH + GITHUB_APP_INSTALLATION_ID) or GITHUB_TOKEN" >&2
+  exit 1
+fi
