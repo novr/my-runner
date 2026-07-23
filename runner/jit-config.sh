@@ -4,9 +4,14 @@
 # Usage: jit-config.sh <runner-name>
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 RUNNER_NAME="${1:?runner name required}"
 LABELS="${RUNNER_LABELS:-macos,tart,xcode,self-hosted}"
 GROUP_ID="${RUNNER_GROUP_ID:-1}"
+
+# Obtain a short-lived installation access token from GitHub App credentials
+TOKEN=$("${SCRIPT_DIR}/github-token.sh")
 
 LABELS_JSON=$(echo "$LABELS" | tr ',' '\n' | jq -R . | jq -s .)
 
@@ -27,7 +32,7 @@ fi
 
 curl -fsSL \
   -X POST \
-  -H "Authorization: Bearer ${GITHUB_TOKEN:?GITHUB_TOKEN not set}" \
+  -H "Authorization: Bearer ${TOKEN}" \
   -H "Accept: application/vnd.github+json" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   -d "$PAYLOAD" \

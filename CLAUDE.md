@@ -89,20 +89,40 @@ tart push <vm-name> ghcr.io/<org>/<image>:<tag>
 echo $GITHUB_TOKEN | tart login ghcr.io --username <user> --password-stdin
 ```
 
-## GitHub JIT Config
+## GitHub Apps 認証
 
-`runner/jit-config.sh` wraps this API call (supports both org-level and repo-level):
+PAT ではなく GitHub Apps を使う。ユーザーアカウントに紐づかず、Installation Access Token（有効期限1時間）を自動取得するため長期トークン漏洩リスクがない。
+
+### 必要な App 権限
+
+| スコープ | 権限 |
+|---|---|
+| Organization self-hosted runners | Read & Write |
+
+### セットアップ手順
 
 ```bash
-curl -X POST \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
-  -H "Accept: application/vnd.github+json" \
-  -H "X-GitHub-Api-Version: 2022-11-28" \
-  https://api.github.com/orgs/<org>/actions/runners/generate-jit-config \
-  -d '{"name":"<runner>","runner_group_id":1,"labels":["macos","tart","xcode"],"work_folder":"_work"}'
+# 1. Installation ID を調べる
+gh api /orgs/{org}/installation --jq '.id'
+
+# 2. .env に設定
+GITHUB_APP_ID=<App ID>
+GITHUB_APP_INSTALLATION_ID=<上記の値>
+GITHUB_APP_PRIVATE_KEY_PATH=/etc/github-runner/private-key.pem   # リポジトリ外に置く
 ```
 
-The `encoded_jit_config` from the response is passed to `./run.sh --jitconfig <value>` inside the VM. The runner auto-deregisters after executing one job.
+### トークン取得フロー（runner/github-token.sh）
+
+```
+秘密鍵(.pem) + App ID
+    └── RS256署名 → JWT（有効10分）
+          └── POST /app/installations/{id}/access_tokens
+                └── Installation Access Token（有効1時間）→ API呼び出しに使用
+```
+
+### JIT Config（runner/jit-config.sh）
+
+`jit-config.sh` は内部で `github-token.sh` を呼んでトークンを取得してから `generate-jit-config` API を叩く。`encoded_jit_config` を VM 内の `./run.sh --jitconfig <value>` に渡すと、1ジョブ実行後にランナーが自動登録解除される。
 
 ## IaC Conventions
 
