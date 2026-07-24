@@ -22,4 +22,6 @@ curl -fsSL \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Accept: application/vnd.github+json" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
-  "$ENDPOINT" >/dev/null
+  -o /dev/null \
+  -w '' \
+  "$ENDPOINT"

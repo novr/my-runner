@@ -20,10 +20,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Determine name prefix to scope VM count to this target ───────────────────
+# Normalize to lowercase so names match prune filters (novr/Rin vs novr/rin).
 if [[ -n "${GITHUB_ORG:-}" ]]; then
-  TARGET="${GITHUB_ORG}"
+  TARGET="$(printf '%s' "${GITHUB_ORG}" | tr '[:upper:]' '[:lower:]')"
 elif [[ -n "${GITHUB_REPO:-}" ]]; then
-  TARGET="$(echo "${GITHUB_REPO}" | tr '/' '-')"
+  TARGET="$(printf '%s' "${GITHUB_REPO}" | tr '/' '-' | tr '[:upper:]' '[:lower:]')"
 else
   echo "ERROR: GITHUB_ORG or GITHUB_REPO must be set" >&2; exit 1
 fi

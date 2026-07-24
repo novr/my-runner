@@ -21,22 +21,24 @@ done
 
 if [[ -n "${GITHUB_ORG:-}" ]]; then
   LIST_PATH="/orgs/${GITHUB_ORG}/actions/runners"
-  PREFIX="${GITHUB_ORG}-runner-"
+  PREFIX="$(printf '%s' "${GITHUB_ORG}" | tr '[:upper:]' '[:lower:]')-runner-"
 elif [[ -n "${GITHUB_REPO:-}" ]]; then
   LIST_PATH="/repos/${GITHUB_REPO}/actions/runners"
-  PREFIX="$(echo "${GITHUB_REPO}" | tr '/' '-')-runner-"
+  PREFIX="$(printf '%s' "${GITHUB_REPO}" | tr '/' '-' | tr '[:upper:]' '[:lower:]')-runner-"
 else
   echo "ERROR: GITHUB_ORG or GITHUB_REPO must be set" >&2
   exit 1
 fi
 
 TOKEN=$("${REPO_ROOT}/runner/github-token.sh")
-export TOKEN LIST_PATH PREFIX DRY_RUN REPO_ROOT GITHUB_ORG GITHUB_REPO
 
 log() { echo "[$(date +%T)] [prune] $*"; }
 
+log "Target prefix (case-insensitive): ${PREFIX}"
+
 page=1
 deleted=0
+failed=0
 while true; do
   RESP=$(curl -fsSL \
     -H "Authorization: Bearer ${TOKEN}" \
@@ -51,16 +53,21 @@ while true; do
     [[ -z "${id}" ]] && continue
     if [[ "${DRY_RUN}" == true ]]; then
       log "Would delete offline runner ${name} (id=${id})"
-    else
-      log "Deleting offline runner ${name} (id=${id})..."
-      GITHUB_ORG="${GITHUB_ORG:-}" GITHUB_REPO="${GITHUB_REPO:-}" \
-        "${REPO_ROOT}/runner/delete-runner.sh" "${id}" || true
+      deleted=$((deleted + 1))
+      continue
     fi
-    deleted=$((deleted + 1))
+    log "Deleting offline runner ${name} (id=${id})..."
+    if GITHUB_ORG="${GITHUB_ORG:-}" GITHUB_REPO="${GITHUB_REPO:-}" \
+      "${REPO_ROOT}/runner/delete-runner.sh" "${id}"; then
+      deleted=$((deleted + 1))
+    else
+      log "FAILED to delete ${name} (id=${id})"
+      failed=$((failed + 1))
+    fi
   done < <(echo "$RESP" | jq -r --arg p "${PREFIX}" '
     .runners[]
     | select(.status == "offline")
-    | select(.name | startswith($p))
+    | select((.name | ascii_downcase) | startswith($p))
     | [.id, .name, .status]
     | @tsv
   ')
@@ -69,4 +76,5 @@ while true; do
   page=$((page + 1))
 done
 
-log "Done. ${deleted} offline runner(s) processed."
+log "Done. deleted=${deleted} failed=${failed}"
+[[ "${failed}" -eq 0 ]]

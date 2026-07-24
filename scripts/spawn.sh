@@ -19,10 +19,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Determine name prefix (used to namespace VMs per target) ──────────────────
+# Normalize to lowercase so prune/prefix matching stays consistent (novr/Rin vs novr/rin).
 if [[ -n "${GITHUB_ORG:-}" ]]; then
-  TARGET="${GITHUB_ORG}"
+  TARGET="$(printf '%s' "${GITHUB_ORG}" | tr '[:upper:]' '[:lower:]')"
 elif [[ -n "${GITHUB_REPO:-}" ]]; then
-  TARGET="$(echo "${GITHUB_REPO}" | tr '/' '-')"
+  TARGET="$(printf '%s' "${GITHUB_REPO}" | tr '/' '-' | tr '[:upper:]' '[:lower:]')"
 else
   echo "ERROR: GITHUB_ORG or GITHUB_REPO must be set" >&2; exit 1
 fi
