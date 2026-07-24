@@ -136,4 +136,5 @@ launchd（`make plist-install`）では keyring に届かないため、GitHub A
 - **Resource sizing** — default: 4 vCPU, 8 GB RAM for standard iOS builds; 8 vCPU / 16 GB for large Xcode builds.
 - **Secrets** — GitHub tokens and JIT configs must never be baked into VM images. Pass JIT config via stdin (never argv) so it does not appear in `ps`.
 - **Cleanup guard** — always pair `tart clone` with a trap that stops (`kill` / `tart stop`) then deletes the VM.
-- **Pool capacity** — count in-flight `spawn.sh` PIDs plus running VMs; back off exponentially on consecutive spawn failures.
+- **Pool capacity** — count in-flight `spawn.sh` PIDs plus *running* VMs only; back off exponentially on consecutive spawn failures. Ctrl-C kills in-flight spawns.
+- **SSH** — use `sshpass -e` (SSHPASS) and password-only auth; never put the VM password or JIT config on argv.

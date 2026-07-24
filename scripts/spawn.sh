@@ -43,12 +43,18 @@ SSH_OPTS=(
   -o ServerAliveInterval=30
   -o ServerAliveCountMax=10
 )
-SSH_CMD=(sshpass -p "${VM_PASSWORD}" ssh "${SSH_OPTS[@]}")
-SCP_CMD=(sshpass -p "${VM_PASSWORD}" scp "${SSH_OPTS[@]}")
+# sshpass -e reads password from SSHPASS (avoids argv leak via `ps`).
+export SSHPASS="${VM_PASSWORD}"
+SSH_CMD=(sshpass -e ssh "${SSH_OPTS[@]}")
+SCP_CMD=(sshpass -e scp "${SSH_OPTS[@]}")
 VM_PID=""
 RUNNER_ID=""
 
 log() { echo "[$(date +%T)] [${RUNNER_NAME}] $*"; }
+
+vm_is_running() {
+  tart list 2>/dev/null | awk -v n="${RUNNER_NAME}" '$2 == n && $NF == "running" { found=1 } END { exit !found }'
+}
 
 cleanup() {
   # generate-jitconfig registers immediately; ephemeral self-remove only happens
@@ -102,17 +108,30 @@ JIT_CONFIG=$(echo "${JIT_JSON}" | jq -r '.encoded_jit_config')
 
 log "Starting runner inside VM (GitHub id=${RUNNER_ID})..."
 # Pass JIT config via stdin so it never appears in process args (ps).
-# Success path: bootstrap shuts down the VM → SSH often exits 255 (connection closed).
-# Failure path: bootstrap exits 1 without shutdown → SSH exits 1.
+# Failure: bootstrap exits non-zero without shutdown → VM stays up.
+# Success: bootstrap shuts down → SSH drops (often 255) and VM stops.
 ssh_status=0
 printf '%s\n' "${JIT_CONFIG}" | "${SSH_CMD[@]}" "${VM_USER}@${VM_IP}" \
   "RUNNER_VERSION='${RUNNER_VERSION:-2.336.0}' bash ~/bootstrap.sh" || ssh_status=$?
+
 if [[ "${ssh_status}" -eq 1 ]]; then
-  log "ERROR: bootstrap failed inside VM"
+  log "ERROR: bootstrap failed inside VM (exit ${ssh_status})"
   exit 1
 fi
 
+# If the guest is still running, bootstrap did not complete a clean shutdown.
+if [[ -n "${VM_PID}" ]] && kill -0 "${VM_PID}" 2>/dev/null; then
+  for _ in $(seq 1 15); do
+    vm_is_running || break
+    sleep 2
+  done
+  if vm_is_running; then
+    log "ERROR: VM still running after bootstrap — treating as failure"
+    exit 1
+  fi
+fi
+
 log "Waiting for VM to shut down..."
-wait "${VM_PID}" || true
+wait "${VM_PID}" 2>/dev/null || true
 VM_PID=""
 log "Done."

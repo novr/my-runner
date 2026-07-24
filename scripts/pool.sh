@@ -42,8 +42,12 @@ NEXT_SPAWN_AT=0
 log() { echo "[$(date +%T)] [pool:${TARGET}] $*"; }
 
 # tart list columns: Source | Name | Disk | Size | Accessed | State
+# Only count running VMs — stopped leftovers must not block replenishment.
 running_vms() {
-  tart list 2>/dev/null | awk -v p="${TARGET}-runner-" '$2 ~ ("^" p) { c++ } END { print c+0 }'
+  tart list 2>/dev/null | awk -v p="${TARGET}-runner-" '
+    $2 ~ ("^" p) && $NF == "running" { c++ }
+    END { print c+0 }
+  '
 }
 
 # Drop finished spawn PIDs; update failure streak for backoff.
@@ -83,6 +87,20 @@ inflight_count() {
 capacity() {
   echo $(( $(running_vms) + $(inflight_count) ))
 }
+
+shutdown_pool() {
+  local pid
+  log "Caught signal — stopping ${#SPAWN_PIDS[@]} in-flight spawn(s)..."
+  for pid in ${SPAWN_PIDS[@]+"${SPAWN_PIDS[@]}"}; do
+    kill "${pid}" 2>/dev/null || true
+  done
+  for pid in ${SPAWN_PIDS[@]+"${SPAWN_PIDS[@]}"}; do
+    wait "${pid}" 2>/dev/null || true
+  done
+  SPAWN_PIDS=()
+  exit 130
+}
+trap shutdown_pool INT TERM
 
 log "Starting (target size: ${POOL_SIZE})..."
 

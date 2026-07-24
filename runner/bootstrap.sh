@@ -36,9 +36,12 @@ if [[ "${need_download}" == true ]]; then
 fi
 
 echo "[bootstrap] Starting runner v${RUNNER_VERSION}..."
-# --jitconfig: single-use JIT registration; runner deregisters itself after one job
-if ! ./run.sh --jitconfig "${JIT_CONFIG}"; then
-  echo "[bootstrap] ERROR: runner exited with failure (check version / network)" >&2
+# --jitconfig: single-use JIT registration; runner deregisters itself after one job.
+# On failure do NOT shut down — spawn detects the still-running VM and exits non-zero.
+runner_status=0
+./run.sh --jitconfig "${JIT_CONFIG}" || runner_status=$?
+if [[ "${runner_status}" -ne 0 ]]; then
+  echo "[bootstrap] ERROR: runner exited ${runner_status} (check version / network)" >&2
   exit 1
 fi
 

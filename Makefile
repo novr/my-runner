@@ -14,7 +14,7 @@ spawn:
 ## Spawn a single runner targeting a specific repo
 ##   make spawn-repo REPO=owner/repo
 spawn-repo:
-	bash scripts/spawn.sh --repo $(REPO)
+	bash scripts/spawn.sh --repo "$(REPO)"
 
 ## Start the org-level pool manager in the foreground
 pool:
@@ -23,7 +23,7 @@ pool:
 ## Start a repo-level pool manager in the foreground
 ##   make pool-repo REPO=owner/repo
 pool-repo:
-	bash scripts/pool.sh --repo $(REPO)
+	bash scripts/pool.sh --repo "$(REPO)"
 
 ## Delete all orphaned runner VMs (prefix: <target>-runner-)
 clean:
@@ -34,7 +34,7 @@ clean:
 ##   make prune-runners
 ##   make prune-runners REPO=novr/Rin
 prune-runners:
-	bash scripts/prune-runners.sh $(if $(REPO),--repo $(REPO),)
+	bash scripts/prune-runners.sh $(if $(REPO),--repo "$(REPO)",)
 
 ## Install pool manager as a launchd service (edit REPO_PATH in the plist first)
 plist-install:
