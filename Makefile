@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: setup spawn spawn-repo pool pool-repo clean plist-install plist-uninstall
+.PHONY: setup spawn spawn-repo pool pool-repo clean prune-runners plist-install plist-uninstall
 
 ## First-time host setup (install tart, sshpass, jq; pull base image)
 setup:
@@ -27,8 +27,14 @@ pool-repo:
 
 ## Delete all orphaned runner VMs (prefix: <target>-runner-)
 clean:
-	@tart list 2>/dev/null | grep -E '^.+-runner-' | awk '{print $$1}' \
+	@tart list 2>/dev/null | awk '$$2 ~ /-runner-/ { print $$2 }' \
 	  | xargs -I{} sh -c 'echo "Deleting {}"; tart delete {}' || true
+
+## Remove offline GitHub runner registrations left by aborted JIT spawns
+##   make prune-runners
+##   make prune-runners REPO=novr/Rin
+prune-runners:
+	bash scripts/prune-runners.sh $(if $(REPO),--repo $(REPO),)
 
 ## Install pool manager as a launchd service (edit REPO_PATH in the plist first)
 plist-install:

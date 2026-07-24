@@ -13,6 +13,10 @@ Uninstall:
   rm ~/Library/LaunchAgents/com.myrunner.pool.plist
 
 Update REPO_PATH below to the absolute path of this repository.
+
+launchd has no keyring access: configure GitHub App credentials in .env
+(GITHUB_APP_ID / GITHUB_APP_INSTALLATION_ID / GITHUB_APP_PRIVATE_KEY_PATH).
+Do not rely on `gh auth token` for this service.
 -->
 <plist version="1.0">
 <dict>

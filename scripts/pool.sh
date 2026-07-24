@@ -29,25 +29,78 @@ else
 fi
 
 POOL_SIZE="${POOL_SIZE:-2}"
-CHECK_INTERVAL=30
+CHECK_INTERVAL="${CHECK_INTERVAL:-30}"
+BACKOFF_BASE="${BACKOFF_BASE:-30}"
+BACKOFF_MAX="${BACKOFF_MAX:-600}"
+
+# PIDs of in-flight spawn.sh processes (counted toward pool capacity).
+SPAWN_PIDS=()
+FAILURES=0
+NEXT_SPAWN_AT=0
 
 log() { echo "[$(date +%T)] [pool:${TARGET}] $*"; }
 
-running_count() {
-  tart list 2>/dev/null | grep -c "^${TARGET}-runner-" || true
+# tart list columns: Source | Name | Disk | Size | Accessed | State
+running_vms() {
+  tart list 2>/dev/null | awk -v p="${TARGET}-runner-" '$2 ~ ("^" p) { c++ } END { print c+0 }'
+}
+
+# Drop finished spawn PIDs; update failure streak for backoff.
+reap_spawns() {
+  local alive=()
+  local pid status now
+  now=$(date +%s)
+  for pid in ${SPAWN_PIDS[@]+"${SPAWN_PIDS[@]}"}; do
+    if kill -0 "${pid}" 2>/dev/null; then
+      alive+=("${pid}")
+      continue
+    fi
+    status=0
+    wait "${pid}" || status=$?
+    if [[ "${status}" -eq 0 ]]; then
+      FAILURES=0
+      NEXT_SPAWN_AT=0
+    else
+      FAILURES=$((FAILURES + 1))
+      local shift=$(( FAILURES - 1 ))
+      if [[ "${shift}" -gt 8 ]]; then shift=8; fi
+      local delay=$(( BACKOFF_BASE * (1 << shift) ))
+      if [[ "${delay}" -gt "${BACKOFF_MAX}" ]]; then
+        delay="${BACKOFF_MAX}"
+      fi
+      NEXT_SPAWN_AT=$(( now + delay ))
+      log "Spawn ${pid} exited ${status}; backoff ${delay}s (failures=${FAILURES})"
+    fi
+  done
+  SPAWN_PIDS=(${alive[@]+"${alive[@]}"})
+}
+
+inflight_count() {
+  echo "${#SPAWN_PIDS[@]}"
+}
+
+capacity() {
+  echo $(( $(running_vms) + $(inflight_count) ))
 }
 
 log "Starting (target size: ${POOL_SIZE})..."
 
 while true; do
-  CURRENT=$(running_count)
+  reap_spawns
+  CURRENT=$(capacity)
   NEEDED=$(( POOL_SIZE - CURRENT ))
+  NOW=$(date +%s)
 
   if [[ $NEEDED -gt 0 ]]; then
-    log "Pool: ${CURRENT}/${POOL_SIZE}. Spawning ${NEEDED} runner(s)..."
-    for _ in $(seq 1 "${NEEDED}"); do
-      "${REPO_ROOT}/scripts/spawn.sh" "${SPAWN_ARGS[@]}" &
-    done
+    if [[ "${FAILURES}" -gt 0 && "${NOW}" -lt "${NEXT_SPAWN_AT}" ]]; then
+      log "Pool: ${CURRENT}/${POOL_SIZE}. Backing off $(( NEXT_SPAWN_AT - NOW ))s after failures..."
+    else
+      log "Pool: ${CURRENT}/${POOL_SIZE}. Spawning ${NEEDED} runner(s)..."
+      for _ in $(seq 1 "${NEEDED}"); do
+        "${REPO_ROOT}/scripts/spawn.sh" ${SPAWN_ARGS[@]+"${SPAWN_ARGS[@]}"} &
+        SPAWN_PIDS+=("$!")
+      done
+    fi
   fi
 
   sleep "${CHECK_INTERVAL}"

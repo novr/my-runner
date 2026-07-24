@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fetches a single-use JIT runner registration config from GitHub API.
-# Outputs the encoded_jit_config string to stdout.
+# Prints JSON to stdout: {"runner_id":N,"encoded_jit_config":"..."}
 # Usage: jit-config.sh <runner-name>
 set -euo pipefail
 
@@ -10,7 +10,6 @@ RUNNER_NAME="${1:?runner name required}"
 LABELS="${RUNNER_LABELS:-macos,tart,xcode,self-hosted}"
 GROUP_ID="${RUNNER_GROUP_ID:-1}"
 
-# Obtain a short-lived installation access token from GitHub App credentials
 TOKEN=$("${SCRIPT_DIR}/github-token.sh")
 
 LABELS_JSON=$(echo "$LABELS" | tr ',' '\n' | jq -R . | jq -s .)
@@ -30,10 +29,12 @@ else
   exit 1
 fi
 
-curl -fsSL \
+RESP=$(curl -fsSL \
   -X POST \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Accept: application/vnd.github+json" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   -d "$PAYLOAD" \
-  "$ENDPOINT" | jq -r '.encoded_jit_config'
+  "$ENDPOINT")
+
+echo "$RESP" | jq -c '{runner_id: .runner.id, encoded_jit_config: .encoded_jit_config}'

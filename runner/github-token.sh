@@ -4,8 +4,10 @@
 # Priority:
 #   1. GitHub Apps  — if GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY_PATH are set
 #      Generates a JWT, exchanges it for an Installation Access Token (~1 hour).
+#      Required for launchd / non-interactive hosts (no keyring).
 #   2. PAT          — if GITHUB_TOKEN is set
 #      Returns it directly.
+#   3. gh CLI       — interactive fallback only; fails under launchd.
 set -euo pipefail
 
 if [[ -n "${GITHUB_APP_ID:-}" && -n "${GITHUB_APP_PRIVATE_KEY_PATH:-}" ]]; then
