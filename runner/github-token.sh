@@ -33,6 +33,9 @@ if [[ -n "${GITHUB_APP_ID:-}" && -n "${GITHUB_APP_PRIVATE_KEY_PATH:-}" ]]; then
 elif [[ -n "${GITHUB_TOKEN:-}" ]]; then
   printf '%s' "${GITHUB_TOKEN}"
 
+elif command -v gh &>/dev/null && gh auth status &>/dev/null; then
+  gh auth token
+
 else
   echo "ERROR: set either (GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY_PATH + GITHUB_APP_INSTALLATION_ID) or GITHUB_TOKEN" >&2
   exit 1

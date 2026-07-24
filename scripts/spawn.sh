@@ -31,7 +31,9 @@ RUNNER_NAME="${TARGET}-runner-$(uuidgen | tr '[:upper:]' '[:lower:]')"
 BASE_IMAGE="${BASE_IMAGE:-ghcr.io/cirruslabs/macos-sequoia-xcode:latest}"
 VM_CPU="${VM_CPU:-4}"
 VM_MEMORY="${VM_MEMORY:-8192}"
-SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ServerAliveCountMax=10"
+SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ServerAliveCountMax=10)
+SSH_CMD=(sshpass -p admin ssh "${SSH_OPTS[@]}")
+SCP_CMD=(sshpass -p admin scp "${SSH_OPTS[@]}")
 
 log() { echo "[$(date +%T)] [${RUNNER_NAME}] $*"; }
 
@@ -57,17 +59,17 @@ VM_IP=$(tart ip "${RUNNER_NAME}" --wait 60)
 log "VM IP: ${VM_IP}"
 
 for i in $(seq 1 30); do
-  ssh $SSH_OPTS "admin@${VM_IP}" true 2>/dev/null && break
+  "${SSH_CMD[@]}" "admin@${VM_IP}" true 2>/dev/null && break
   [[ $i -eq 30 ]] && { log "SSH timeout"; exit 1; }
   sleep 2
 done
 
 log "Copying bootstrap script..."
-scp $SSH_OPTS "${REPO_ROOT}/runner/bootstrap.sh" "admin@${VM_IP}:~/bootstrap.sh"
+"${SCP_CMD[@]}" "${REPO_ROOT}/runner/bootstrap.sh" "admin@${VM_IP}:~/bootstrap.sh"
 
 log "Starting runner inside VM..."
 # bootstrap.sh ends with `shutdown -h now`; SSH exits non-zero — expected
-ssh $SSH_OPTS "admin@${VM_IP}" \
+"${SSH_CMD[@]}" "admin@${VM_IP}" \
   "RUNNER_VERSION='${RUNNER_VERSION:-2.322.0}' bash ~/bootstrap.sh '${JIT_CONFIG}'" || true
 
 log "Waiting for VM to shut down..."

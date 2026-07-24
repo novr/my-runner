@@ -22,9 +22,9 @@ PAYLOAD=$(jq -n \
   '{name: $name, runner_group_id: $group_id, labels: $labels, work_folder: "_work"}')
 
 if [[ -n "${GITHUB_ORG:-}" ]]; then
-  ENDPOINT="https://api.github.com/orgs/${GITHUB_ORG}/actions/runners/generate-jit-config"
+  ENDPOINT="https://api.github.com/orgs/${GITHUB_ORG}/actions/runners/generate-jitconfig"
 elif [[ -n "${GITHUB_REPO:-}" ]]; then
-  ENDPOINT="https://api.github.com/repos/${GITHUB_REPO}/actions/runners/generate-jit-config"
+  ENDPOINT="https://api.github.com/repos/${GITHUB_REPO}/actions/runners/generate-jitconfig"
 else
   echo "ERROR: GITHUB_ORG or GITHUB_REPO must be set" >&2
   exit 1
