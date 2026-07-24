@@ -8,7 +8,7 @@ set -euo pipefail
 JIT_CONFIG="$(cat)"
 [[ -n "${JIT_CONFIG}" ]] || { echo "ERROR: JIT config required on stdin" >&2; exit 1; }
 
-RUNNER_VERSION="${RUNNER_VERSION:-2.322.0}"
+RUNNER_VERSION="${RUNNER_VERSION:-2.336.0}"
 RUNNER_DIR="${HOME}/actions-runner"
 ARCHIVE="actions-runner-osx-arm64-${RUNNER_VERSION}.tar.gz"
 MARKER="${RUNNER_DIR}/.runner-version"
@@ -37,7 +37,10 @@ fi
 
 echo "[bootstrap] Starting runner v${RUNNER_VERSION}..."
 # --jitconfig: single-use JIT registration; runner deregisters itself after one job
-./run.sh --jitconfig "${JIT_CONFIG}"
+if ! ./run.sh --jitconfig "${JIT_CONFIG}"; then
+  echo "[bootstrap] ERROR: runner exited with failure (check version / network)" >&2
+  exit 1
+fi
 
 echo "[bootstrap] Runner finished. Shutting down VM..."
 sudo shutdown -h now

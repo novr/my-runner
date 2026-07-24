@@ -34,7 +34,15 @@ VM_CPU="${VM_CPU:-4}"
 VM_MEMORY="${VM_MEMORY:-8192}"
 VM_USER="${VM_USER:-admin}"
 VM_PASSWORD="${VM_PASSWORD:-admin}"
-SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ServerAliveCountMax=10)
+SSH_OPTS=(
+  -o StrictHostKeyChecking=no
+  -o UserKnownHostsFile=/dev/null
+  -o PreferredAuthentications=password
+  -o PubkeyAuthentication=no
+  -o NumberOfPasswordPrompts=1
+  -o ServerAliveInterval=30
+  -o ServerAliveCountMax=10
+)
 SSH_CMD=(sshpass -p "${VM_PASSWORD}" ssh "${SSH_OPTS[@]}")
 SCP_CMD=(sshpass -p "${VM_PASSWORD}" scp "${SSH_OPTS[@]}")
 VM_PID=""
@@ -94,9 +102,15 @@ JIT_CONFIG=$(echo "${JIT_JSON}" | jq -r '.encoded_jit_config')
 
 log "Starting runner inside VM (GitHub id=${RUNNER_ID})..."
 # Pass JIT config via stdin so it never appears in process args (ps).
-# bootstrap.sh ends with `shutdown -h now`; SSH exits non-zero — expected.
+# Success path: bootstrap shuts down the VM → SSH often exits 255 (connection closed).
+# Failure path: bootstrap exits 1 without shutdown → SSH exits 1.
+ssh_status=0
 printf '%s\n' "${JIT_CONFIG}" | "${SSH_CMD[@]}" "${VM_USER}@${VM_IP}" \
-  "RUNNER_VERSION='${RUNNER_VERSION:-2.322.0}' bash ~/bootstrap.sh" || true
+  "RUNNER_VERSION='${RUNNER_VERSION:-2.336.0}' bash ~/bootstrap.sh" || ssh_status=$?
+if [[ "${ssh_status}" -eq 1 ]]; then
+  log "ERROR: bootstrap failed inside VM"
+  exit 1
+fi
 
 log "Waiting for VM to shut down..."
 wait "${VM_PID}" || true
